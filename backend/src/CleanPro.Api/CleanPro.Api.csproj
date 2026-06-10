@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>CleanPro.Api</RootNamespace>
+    <!-- Lambda packaging -->
+    <AssemblyName>CleanPro.Api</AssemblyName>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <AWSProjectType>Lambda</AWSProjectType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Amazon.Lambda.Core" Version="2.7.0" />
+    <PackageReference Include="Amazon.Lambda.APIGatewayEvents" Version="2.7.1" />
+    <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" Version="2.4.4" />
+    <PackageReference Include="Amazon.Lambda.Logging.AspNetCore" Version="4.1.0" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.401" />
+    <PackageReference Include="AWSSDK.SecretsManager" Version="3.7.500" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CleanPro.Domain\CleanPro.Domain.csproj" />
+    <ProjectReference Include="..\CleanPro.Application\CleanPro.Application.csproj" />
+    <ProjectReference Include="..\CleanPro.Infrastructure\CleanPro.Infrastructure.csproj" />
+    <ProjectReference Include="..\CleanPro.Shared\CleanPro.Shared.csproj" />
+  </ItemGroup>
+</Project>

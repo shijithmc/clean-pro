@@ -1,0 +1,77 @@
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+*.ipr
+*.iws
+.idea/
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+pubspec.lock
+
+# Android
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/gradle/wrapper/
+**/android/key.properties
+**.keystore
+
+# iOS
+**/ios/.generated/
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/ios/Pods/
+
+# .NET
+obj/
+bin/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+packages/
+*.nupkg
+local.settings.json
+appsettings.Development.json
+appsettings.local.json
+
+# AWS CDK
+cdk.out/
+cdk.context.json
+
+# Secrets
+*.env
+*.env.*
+secrets.json
+google-services.json
+GoogleService-Info.plist
+
+# Coverage
+coverage/
+lcov.info
+
+# Node (for CDK tooling)
+node_modules/

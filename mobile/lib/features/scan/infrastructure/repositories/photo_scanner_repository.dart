@@ -3,10 +3,10 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
+import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/photo_item.dart';
 import '../../domain/entities/scan_session.dart';
 import '../../domain/repositories/i_photo_scanner_repository.dart';
-import '../../../../core/constants/app_constants.dart';
 
 @LazySingleton(as: IPhotoScannerRepository)
 class PhotoScannerRepository implements IPhotoScannerRepository {
@@ -22,12 +22,26 @@ class PhotoScannerRepository implements IPhotoScannerRepository {
     return result.isAuth;
   }
 
+  // FA-015: use getPermissionState (non-prompting) — requestPermissionExtend
+  // was showing a system permission dialog on every status check.
+  // photo_manager v3 API: positional RequestType was replaced with named
+  // `requestOption: PermissionRequestOption(...)`.
   @override
   Future<bool> hasPhotoAccess() async {
-    final result = await PhotoManager.requestPermissionExtend();
-    return result.isAuth;
+    final state = await PhotoManager.getPermissionState(
+      requestOption: const PermissionRequestOption(
+        androidPermission: AndroidPermission(
+          type: RequestType.image,
+          mediaLocation: false,
+        ),
+      ),
+    );
+    return state.isAuth;
   }
 
+  // FA-014: use the "All Photos" album, not albums.first.
+  // getAssetPathList() order is undefined; on many iOS configurations
+  // albums.first is a limited or named album, not the full library.
   @override
   Future<int> getPhotoCount() async {
     final albums = await PhotoManager.getAssetPathList(
@@ -38,9 +52,15 @@ class PhotoScannerRepository implements IPhotoScannerRepository {
     );
 
     if (albums.isEmpty) return 0;
-    return albums.first.assetCountAsync;
+
+    final allAlbum = albums.firstWhere(
+      (a) => a.isAll,
+      orElse: () => albums.first,
+    );
+    return allAlbum.assetCountAsync;
   }
 
+  // FA-013: same fix in streamPhotos — scan the "All Photos" album.
   @override
   Stream<PhotoItem> streamPhotos({
     int batchSize = 100,
@@ -52,7 +72,10 @@ class PhotoScannerRepository implements IPhotoScannerRepository {
 
     if (albums.isEmpty) return;
 
-    final allAlbum = albums.first;
+    final allAlbum = albums.firstWhere(
+      (a) => a.isAll,
+      orElse: () => albums.first,
+    );
     final totalCount = await allAlbum.assetCountAsync;
     final limit = totalCount.clamp(0, maxPhotos);
 
@@ -67,8 +90,6 @@ class PhotoScannerRepository implements IPhotoScannerRepository {
         final file = await asset.file;
         if (file == null) continue;
 
-        // In photo_manager v3, album membership is not directly on AssetEntity.
-        // We yield without album metadata here; album info is a secondary concern.
         yield PhotoItem(
           id: asset.id,
           path: file.path,
@@ -91,10 +112,7 @@ class PhotoScannerRepository implements IPhotoScannerRepository {
   @override
   Future<List<String>> deletePhotos(List<String> assetIds) async {
     if (assetIds.isEmpty) return [];
-
     final result = await PhotoManager.editor.deleteWithIds(assetIds);
-
-    // Return IDs that were successfully moved to Trash
     return result;
   }
 
@@ -126,7 +144,9 @@ class PhotoScannerRepository implements IPhotoScannerRepository {
             : null,
         totalPhotos: json['totalPhotos'] as int,
       );
-    } catch (_) {
+    } catch (e, s) {
+      // FA-033: log instead of silently swallowing
+      appLog.w('Failed to load last scan session', error: e, stackTrace: s);
       return null;
     }
   }

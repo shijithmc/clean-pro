@@ -3,12 +3,12 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:injectable/injectable.dart';
 
-import '../../domain/entities/duplicate_group.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/photo_item.dart';
 import '../../domain/entities/scan_session.dart';
 import '../../domain/repositories/i_photo_scanner_repository.dart';
 import '../../domain/services/i_duplicate_detector.dart';
-import '../../../../core/constants/app_constants.dart';
 
 // Events
 abstract class ScanEvent extends Equatable {
@@ -106,14 +106,29 @@ class ScanBloc extends Bloc<ScanEvent, ScanState> {
   final IPhotoScannerRepository _scannerRepository;
   final IDuplicateDetector _duplicateDetector;
 
+  // FA-011: _scanSubscription is assigned from stream.listen() so that
+  // _onScanCancelRequested can actually cancel an in-progress scan.
+  // Previously emit.forEach() consumed the stream internally — _scanSubscription
+  // was never assigned and cancel() was always a no-op.
   StreamSubscription<PhotoItem>? _scanSubscription;
+
   ScanSession? _currentSession;
   final List<PhotoItem> _scannedPhotos = [];
+
+  // FA-002: track outstanding pHash futures so we can await all of them before
+  // calling groupDuplicates. Previously _processPhotoAsync was fire-and-forget,
+  // so groupDuplicates ran on a partially-populated photo list.
+  final List<Future<void>> _hashFutures = [];
+  bool _cancelled = false;
 
   Future<void> _onScanStartRequested(
     ScanStartRequested event,
     Emitter<ScanState> emit,
   ) async {
+    _cancelled = false;
+    _scannedPhotos.clear();
+    _hashFutures.clear();
+
     final hasAccess = await _scannerRepository.hasPhotoAccess();
     if (!hasAccess) {
       final granted = await _scannerRepository.requestPhotoAccess();
@@ -126,7 +141,6 @@ class ScanBloc extends Bloc<ScanEvent, ScanState> {
     await _duplicateDetector.initialize();
 
     final totalPhotos = await _scannerRepository.getPhotoCount();
-    _scannedPhotos.clear();
 
     _currentSession = ScanSession.initial().copyWith(
       status: ScanStatus.scanning,
@@ -138,32 +152,55 @@ class ScanBloc extends Bloc<ScanEvent, ScanState> {
 
     int processed = 0;
 
-    await emit.forEach(
-      _scannerRepository.streamPhotos(
-        batchSize: AppConstants.scanBatchSize,
-        maxPhotos: AppConstants.maxPhotosForScan,
-      ),
-      onData: (photo) {
-        // Schedule async hash computation — don't block stream
-        _processPhotoAsync(photo);
+    // FA-011: use stream.listen() so _scanSubscription is properly assigned.
+    // The Completer lets us await stream completion without emit.forEach().
+    final streamDone = Completer<void>();
+
+    _scanSubscription = _scannerRepository
+        .streamPhotos(
+          batchSize: AppConstants.scanBatchSize,
+          maxPhotos: AppConstants.maxPhotosForScan,
+        )
+        .listen(
+      (photo) {
+        if (_cancelled || isClosed) return;
+
+        // FA-002: store the future — do NOT fire-and-forget.
+        _hashFutures.add(_processPhotoAsync(photo));
         processed++;
 
-        _currentSession = _currentSession!.copyWith(
-          processedPhotos: processed,
-        );
-
-        return ScanInProgress(session: _currentSession!);
+        _currentSession = _currentSession!.copyWith(processedPhotos: processed);
+        if (!isClosed) emit(ScanInProgress(session: _currentSession!));
       },
-      onError: (error, stack) {
-        _currentSession = _currentSession!.copyWith(
-          status: ScanStatus.failed,
-          errorMessage: error.toString(),
-        );
-        return ScanFailed(message: error.toString());
+      onError: (Object error, StackTrace stack) {
+        appLog.e('Photo stream error', error: error, stackTrace: stack);
+        if (!_cancelled && !isClosed) {
+          _currentSession = _currentSession?.copyWith(
+            status: ScanStatus.failed,
+            errorMessage: error.toString(),
+          );
+          emit(ScanFailed(message: error.toString()));
+        }
+        if (!streamDone.isCompleted) streamDone.complete();
       },
+      onDone: () {
+        if (!streamDone.isCompleted) streamDone.complete();
+      },
+      cancelOnError: false,
     );
 
-    // All photos streamed — now group duplicates
+    // Wait for the photo stream to exhaust.
+    await streamDone.future;
+
+    if (_cancelled || isClosed) return;
+
+    // FA-002: barrier — wait for ALL outstanding pHash computations before
+    // groupDuplicates. Without this, groupDuplicates received a partially-hashed
+    // list and produced wrong/incomplete duplicate groups.
+    await Future.wait(_hashFutures);
+
+    if (_cancelled || isClosed) return;
+
     if (state is ScanInProgress) {
       try {
         final groups = await _duplicateDetector.groupDuplicates(
@@ -179,9 +216,10 @@ class ScanBloc extends Bloc<ScanEvent, ScanState> {
         );
 
         await _scannerRepository.saveScanResult(_currentSession!);
-        emit(ScanCompleted(session: _currentSession!));
-      } catch (e) {
-        emit(ScanFailed(message: e.toString()));
+        if (!isClosed) emit(ScanCompleted(session: _currentSession!));
+      } catch (e, s) {
+        appLog.e('groupDuplicates failed', error: e, stackTrace: s);
+        if (!isClosed) emit(ScanFailed(message: e.toString()));
       }
     }
   }
@@ -189,10 +227,10 @@ class ScanBloc extends Bloc<ScanEvent, ScanState> {
   Future<void> _processPhotoAsync(PhotoItem photo) async {
     try {
       final pHash = await _duplicateDetector.computePHash(photo);
-      final photoWithHash = photo.copyWith(pHash: pHash);
-      _scannedPhotos.add(photoWithHash);
-    } catch (_) {
-      // Skip photos that fail to hash — don't abort the scan
+      _scannedPhotos.add(photo.copyWith(pHash: pHash));
+    } catch (e, s) {
+      appLog.w('Failed to hash photo ${photo.id}', error: e, stackTrace: s);
+      // Skip photos that fail to hash — don't abort the scan.
       _scannedPhotos.add(photo);
     }
   }
@@ -201,9 +239,12 @@ class ScanBloc extends Bloc<ScanEvent, ScanState> {
     ScanCancelRequested event,
     Emitter<ScanState> emit,
   ) async {
+    _cancelled = true;
+    // FA-011: _scanSubscription is now properly assigned — this actually works.
     await _scanSubscription?.cancel();
+    _scanSubscription = null;
     _currentSession = _currentSession?.copyWith(status: ScanStatus.cancelled);
-    emit(const ScanInitial());
+    if (!isClosed) emit(const ScanInitial());
   }
 
   Future<void> _onGroupReviewCompleted(
@@ -250,14 +291,17 @@ class ScanBloc extends Bloc<ScanEvent, ScanState> {
         photosDeleted: deleted.length,
         bytesReclaimed: totalBytes,
       ));
-    } catch (e) {
+    } catch (e, s) {
+      appLog.e('deletePhotos failed', error: e, stackTrace: s);
       emit(ScanFailed(message: 'Delete failed: ${e.toString()}'));
     }
   }
 
   @override
   Future<void> close() async {
+    _cancelled = true;
     await _scanSubscription?.cancel();
+    _scanSubscription = null;
     await _duplicateDetector.dispose();
     return super.close();
   }

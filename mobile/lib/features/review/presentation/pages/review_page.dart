@@ -71,7 +71,7 @@ class _SummaryBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      color: Theme.of(context).colorScheme.surfaceVariant,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
@@ -128,7 +128,7 @@ class _GroupListTile extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            color: Theme.of(context).colorScheme.surfaceVariant,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
           ),
           child: const Icon(Icons.photo_library_outlined),
         ),
@@ -169,7 +169,8 @@ class _BottomActionBar extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            // FA-021: withOpacity deprecated → withValues
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
@@ -195,7 +196,10 @@ class _BottomActionBar extends StatelessWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
-    final session = (context.read<ScanBloc>().state as ScanCompleted).session;
+    // FA-024: avoid force-cast — state may change between onPressed and here.
+    final state = context.read<ScanBloc>().state;
+    if (state is! ScanCompleted) return;
+    final session = state.session;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

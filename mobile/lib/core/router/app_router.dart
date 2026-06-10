@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+// FA-032: removed unused flutter/material.dart and flutter_bloc imports.
 import 'package:go_router/go_router.dart';
 
 import '../../features/onboarding/presentation/pages/onboarding_page.dart';
@@ -10,7 +9,7 @@ import '../../features/review/presentation/pages/review_page.dart';
 import '../../features/review/presentation/pages/group_detail_page.dart';
 import '../../features/subscription/presentation/pages/paywall_page.dart';
 import '../../features/results/presentation/pages/results_page.dart';
-import '../di/injection.dart';
+// FA-032: removed unused import '../di/injection.dart' — no getIt calls here.
 
 abstract class AppRoutes {
   static const String onboarding = '/onboarding';

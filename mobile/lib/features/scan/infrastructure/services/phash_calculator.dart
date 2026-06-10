@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:image/image.dart' as img;
 import 'package:injectable/injectable.dart';
 
@@ -12,8 +13,14 @@ class PHashCalculator {
   static const int _dctSize = 32;
   static const int _hashSize = 8;
 
-  /// Computes the perceptual hash of [imageBytes] (JPEG/PNG/HEIC decoded bytes).
-  int compute(Uint8List imageBytes) {
+  /// Computes pHash synchronously.
+  /// Only call directly from within a background isolate.
+  /// From the UI isolate, use [computeInIsolate].
+  // Renamed from `compute` to `computeSync` to avoid shadowing the top-level
+  // `compute` function imported from package:flutter/foundation.dart — a name
+  // collision that caused the `computeInIsolate` call to resolve to
+  // `this.compute(...)` instead of the isolate spawn helper.
+  int computeSync(Uint8List imageBytes) {
     final image = img.decodeImage(imageBytes);
     if (image == null) return 0;
 
@@ -40,6 +47,13 @@ class PHashCalculator {
       }
     }
     return hash;
+  }
+
+  // FA-003: offload the O(n⁴) DCT work to a background isolate.
+  // The synchronous version blocks the UI thread for ~100 seconds on a
+  // 10k-photo library → guaranteed ANR on Android, watchdog kill on iOS.
+  Future<int> computeInIsolate(Uint8List imageBytes) {
+    return compute(_computePHashIsolate, imageBytes);
   }
 
   /// Hamming distance between two 64-bit pHash values.
@@ -94,4 +108,10 @@ class PHashCalculator {
         ? sorted[mid]
         : (sorted[mid - 1] + sorted[mid]) / 2;
   }
+}
+
+/// Top-level function required by [compute] — must be accessible outside any
+/// class so it can be sent across the isolate boundary.
+int _computePHashIsolate(Uint8List imageBytes) {
+  return PHashCalculator().computeSync(imageBytes);
 }

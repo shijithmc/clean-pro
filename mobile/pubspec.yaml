@@ -35,21 +35,27 @@ dependencies:
 
   # HTTP client
   dio: ^5.7.0
-  retrofit: ^4.4.1
+  # retrofit removed — no generated REST client used; plain Dio used directly.
+  # amazon_cognito_identity_dart_2 removed — replaced by Amplify Auth SDK or
+  #   direct Cognito calls via Dio; the dart_2 package is unmaintained.
 
-  # Auth
-  amazon_cognito_identity_dart_2: ^3.7.0
+  # Auth / secure storage
   flutter_secure_storage: ^9.2.3
+
+  # BLoC concurrency helpers (FA-011: needed for concurrent cancel processing)
+  bloc_concurrency: ^0.2.5
 
   # Local storage
   shared_preferences: ^2.3.3
-  hive_flutter: ^1.1.0
+  # hive_flutter removed — not used in any current feature; adds 1.5 MB binary
+  # bloat for zero benefit. Revisit if offline caching is added later.
 
   # Permissions
   permission_handler: ^11.3.1
 
   # UI utilities
-  cached_network_image: ^3.4.1
+  # cached_network_image removed — app is entirely on-device; no network images
+  #   are displayed. Removing saves ~300 KB and eliminates an unused network surface.
   shimmer: ^3.0.0
   lottie: ^3.1.3
   auto_size_text: ^3.0.0

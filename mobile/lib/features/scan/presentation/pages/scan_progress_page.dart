@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
-import '../../../../shared/utils/file_size_formatter.dart';
 import '../../application/bloc/scan_bloc.dart';
 
 class ScanProgressPage extends StatelessWidget {

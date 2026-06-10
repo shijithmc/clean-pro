@@ -41,7 +41,7 @@ class _PermissionPageState extends State<PermissionPage> {
                 'Clean Pro needs access to your photo library to find duplicates. '
                 'All analysis happens on your device — nothing is uploaded.',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                       height: 1.5,
                     ),
                 textAlign: TextAlign.center,

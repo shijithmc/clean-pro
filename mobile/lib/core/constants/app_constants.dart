@@ -3,6 +3,28 @@
 class AppConstants {
   AppConstants._();
 
+  // Sentry
+  // FA-004: Sentry DSN must be injected at build time via --dart-define.
+  static const String sentryDsn = String.fromEnvironment(
+    'SENTRY_DSN',
+    defaultValue: '',
+  );
+
+  /// FA-004: Fail fast at startup when required build-time config is absent.
+  /// Catches the common mistake of running a release build without --dart-define
+  /// before it surfaces as a silent runtime failure (no crash reports, no purchases).
+  static void assertConfigured() {
+    assert(
+      revenueCatAppleApiKey.isNotEmpty || revenueCatGoogleApiKey.isNotEmpty,
+      'Missing build-time config: RC_APPLE_API_KEY or RC_GOOGLE_API_KEY must '
+      'be provided via --dart-define.',
+    );
+    assert(
+      sentryDsn.isNotEmpty,
+      'Missing build-time config: SENTRY_DSN must be provided via --dart-define.',
+    );
+  }
+
   // RevenueCat
   static const String revenueCatAppleApiKey = String.fromEnvironment(
     'RC_APPLE_API_KEY',

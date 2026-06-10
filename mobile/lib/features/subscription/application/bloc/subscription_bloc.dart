@@ -3,9 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../domain/entities/subscription_status.dart';
+import '../../domain/exceptions/subscription_exceptions.dart';
 import '../../domain/repositories/i_subscription_repository.dart';
-import '../../infrastructure/services/revenue_cat_service.dart';
-import '../../../../core/constants/app_constants.dart';
 
 // Events
 abstract class SubscriptionEvent extends Equatable {

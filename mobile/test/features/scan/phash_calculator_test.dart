@@ -1,15 +1,8 @@
-import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:clean_pro/features/scan/infrastructure/services/phash_calculator.dart';
 
 void main() {
   group('PHashCalculator', () {
-    late PHashCalculator calculator;
-
-    setUp(() {
-      calculator = PHashCalculator();
-    });
-
     group('hammingDistance', () {
       test('identical hashes return distance 0', () {
         const hash = 0xDEADBEEF12345678;

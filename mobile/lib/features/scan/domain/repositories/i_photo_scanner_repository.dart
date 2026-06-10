@@ -1,6 +1,5 @@
 import '../entities/photo_item.dart';
 import '../entities/scan_session.dart';
-import '../entities/duplicate_group.dart';
 
 /// Contract for photo library access and scan lifecycle.
 /// Implementation uses photo_manager package — dependency never

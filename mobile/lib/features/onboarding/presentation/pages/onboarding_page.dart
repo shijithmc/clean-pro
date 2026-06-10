@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/app_router.dart';
+import '../../domain/repositories/i_onboarding_repository.dart';
 import '../../../subscription/application/bloc/subscription_bloc.dart';
 
 class OnboardingPage extends StatefulWidget {
@@ -16,6 +15,10 @@ class OnboardingPage extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
+  // FA-010: Presentation layer no longer calls SharedPreferences.getInstance()
+  // directly (an Infrastructure concern). IOnboardingRepository provides the
+  // abstraction — the concrete implementation is injected by GetIt.
+  late final IOnboardingRepository _onboardingRepository;
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
@@ -40,12 +43,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
   @override
   void initState() {
     super.initState();
+    _onboardingRepository = getIt<IOnboardingRepository>();
     _checkOnboardingStatus();
   }
 
   Future<void> _checkOnboardingStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final completed = prefs.getBool(AppConstants.onboardingCompleteKey) ?? false;
+    final completed = await _onboardingRepository.isOnboardingCompleted();
     if (completed && mounted) {
       context.go(AppRoutes.scanHome);
     }
@@ -128,8 +131,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   Future<void> _onStartTrial() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(AppConstants.onboardingCompleteKey, true);
+    await _onboardingRepository.markOnboardingCompleted();
 
     if (mounted) {
       context.read<SubscriptionBloc>().add(const SubscriptionTrialStartRequested());
@@ -185,7 +187,7 @@ class _OnboardingSlideWidget extends StatelessWidget {
           Text(
             slide.subtitle,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                   height: 1.5,
                 ),
             textAlign: TextAlign.center,

@@ -66,6 +66,9 @@ class PhotoItem extends Equatable {
         mimeType: mimeType,
       );
 
+  // FA-009: Include isFavourite and isInAlbum in props.
+  // Omitting them meant two PhotoItems with the same id but different
+  // favourite/album states were Equatable-equal — warning badges never updated.
   @override
-  List<Object?> get props => [id, pHash, embedding];
+  List<Object?> get props => [id, pHash, embedding, isFavourite, isInAlbum, albumNames, mimeType];
 }

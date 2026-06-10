@@ -4,9 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
-import '../../../../shared/utils/file_size_formatter.dart';
 import '../../application/bloc/subscription_bloc.dart';
-import '../../domain/entities/subscription_status.dart';
 import '../../domain/repositories/i_subscription_repository.dart';
 
 class PaywallPage extends StatelessWidget {
@@ -60,7 +58,7 @@ class PaywallPage extends StatelessWidget {
                   Text(
                     'Find and remove duplicate photos.\nReclaim your storage today.',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                           height: 1.5,
                         ),
                     textAlign: TextAlign.center,

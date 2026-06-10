@@ -1,18 +1,25 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:injectable/injectable.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/subscription_status.dart';
+import '../../domain/exceptions/subscription_exceptions.dart';
 import '../../domain/repositories/i_subscription_repository.dart';
 
 @LazySingleton(as: ISubscriptionRepository)
 class RevenueCatService implements ISubscriptionRepository {
-  RevenueCatService(this._prefs);
+  // FA-007: constructor now takes FlutterSecureStorage instead of SharedPreferences.
+  // Trial start date was written to SharedPreferences (plaintext on Android).
+  // On a rooted device a user can edit or delete that value in ~10 seconds and
+  // grant themselves an unlimited trial. flutter_secure_storage backs the value
+  // with Android Keystore / iOS Keychain so it cannot be tampered with from
+  // outside the app.
+  RevenueCatService(this._secureStorage);
 
-  final SharedPreferences _prefs;
+  final FlutterSecureStorage _secureStorage;
   bool _isConfigured = false;
 
   Future<void> _ensureConfigured() async {
@@ -40,7 +47,7 @@ class RevenueCatService implements ISubscriptionRepository {
       return _mapToSubscriptionStatus(customerInfo);
     } on PlatformException {
       // Fallback to local trial check if SDK unavailable (offline)
-      return _getLocalTrialStatus();
+      return await _getLocalTrialStatus();
     }
   }
 
@@ -51,7 +58,7 @@ class RevenueCatService implements ISubscriptionRepository {
     final offerings = await Purchases.getOfferings();
     final current = offerings.current;
     if (current == null) {
-      throw PurchaseFailedException('No offerings available');
+      throw const PurchaseFailedException('No offerings available');
     }
 
     final package = current.availablePackages.firstWhere(
@@ -61,10 +68,10 @@ class RevenueCatService implements ISubscriptionRepository {
 
     try {
       final customerInfo = await Purchases.purchasePackage(package);
-      return _mapToSubscriptionStatus(customerInfo);
+      return await _mapToSubscriptionStatus(customerInfo);
     } on PurchasesErrorCode catch (e) {
       if (e == PurchasesErrorCode.purchaseCancelledError) {
-        throw PurchaseCancelledException();
+        throw const PurchaseCancelledException();
       }
       throw PurchaseFailedException(e.toString());
     }
@@ -74,7 +81,7 @@ class RevenueCatService implements ISubscriptionRepository {
   Future<SubscriptionStatus> restorePurchases() async {
     await _ensureConfigured();
     final customerInfo = await Purchases.restorePurchases();
-    return _mapToSubscriptionStatus(customerInfo);
+    return await _mapToSubscriptionStatus(customerInfo);
   }
 
   @override
@@ -92,7 +99,7 @@ class RevenueCatService implements ISubscriptionRepository {
         title: product.title,
         description: product.description,
         priceString: product.priceString,
-        currencyCode: product.currencyCode ?? 'USD',
+        currencyCode: product.currencyCode,
         priceAmountMicros: (product.price * 1000000).round(),
         isAnnual: product.identifier == AppConstants.annualProductId,
       );
@@ -104,7 +111,11 @@ class RevenueCatService implements ISubscriptionRepository {
     final now = DateTime.now();
     final trialEnd = now.add(const Duration(days: AppConstants.trialDurationDays));
 
-    await _prefs.setString(AppConstants.trialStartDateKey, now.toIso8601String());
+    // FA-007: write to secure storage — not SharedPreferences.
+    await _secureStorage.write(
+      key: AppConstants.trialStartDateKey,
+      value: now.toIso8601String(),
+    );
 
     return SubscriptionStatus(
       status: EntitlementStatus.trial,
@@ -116,11 +127,12 @@ class RevenueCatService implements ISubscriptionRepository {
 
   @override
   Future<SubscriptionStatus> syncWithBackend() async {
-    // Backend sync is a secondary fallback — RevenueCat SDK is primary
+    // Backend sync is a secondary fallback — RevenueCat SDK is primary.
     return getEntitlement();
   }
 
-  SubscriptionStatus _mapToSubscriptionStatus(CustomerInfo customerInfo) {
+  // Made async because _getLocalTrialStatus() reads from FlutterSecureStorage (async).
+  Future<SubscriptionStatus> _mapToSubscriptionStatus(CustomerInfo customerInfo) async {
     final entitlement = customerInfo.entitlements.active[AppConstants.revenueCatEntitlementId];
 
     if (entitlement != null && entitlement.isActive) {
@@ -140,12 +152,12 @@ class RevenueCatService implements ISubscriptionRepository {
       );
     }
 
-    // Check local trial
     return _getLocalTrialStatus();
   }
 
-  SubscriptionStatus _getLocalTrialStatus() {
-    final trialStartStr = _prefs.getString(AppConstants.trialStartDateKey);
+  Future<SubscriptionStatus> _getLocalTrialStatus() async {
+    // FA-007: read from secure storage.
+    final trialStartStr = await _secureStorage.read(key: AppConstants.trialStartDateKey);
 
     if (trialStartStr == null) {
       return SubscriptionStatus.none();
@@ -170,13 +182,4 @@ class RevenueCatService implements ISubscriptionRepository {
       trialEndDate: trialEnd,
     );
   }
-}
-
-class PurchaseCancelledException implements Exception {}
-
-class PurchaseFailedException implements Exception {
-  PurchaseFailedException(this.message);
-  final String message;
-  @override
-  String toString() => 'PurchaseFailedException: $message';
 }

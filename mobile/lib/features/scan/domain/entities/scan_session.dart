@@ -15,8 +15,10 @@ class ScanSession extends Equatable {
     this.errorMessage,
   });
 
-  factory ScanSession.initial() => ScanSession(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+  /// Creates a new scan session with a unique ID.
+  /// Pass [id] explicitly in tests for determinism.
+  factory ScanSession.initial({String? id}) => ScanSession(
+        id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
         status: ScanStatus.idle,
       );
 
@@ -68,6 +70,10 @@ class ScanSession extends Equatable {
         errorMessage: errorMessage ?? this.errorMessage,
       );
 
+  // FA-008: Use full `groups` list, not `groups.length`.
+  // groups.length was identical before and after group review, so Equatable
+  // considered the state unchanged and BLoC would not emit — review confirmations
+  // were silently dropped.
   @override
-  List<Object?> get props => [id, status, totalPhotos, processedPhotos, groups.length, errorMessage];
+  List<Object?> get props => [id, status, totalPhotos, processedPhotos, groups, errorMessage];
 }

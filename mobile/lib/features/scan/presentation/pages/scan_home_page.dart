@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../results/presentation/pages/results_page.dart';
 import '../../../subscription/application/bloc/subscription_bloc.dart';
 import '../../../subscription/domain/entities/subscription_status.dart';
 import '../../application/bloc/scan_bloc.dart';
-import '../../../../shared/utils/file_size_formatter.dart';
-import '../../../results/presentation/pages/results_page.dart';
+import '../../domain/entities/scan_session.dart';
 
 class ScanHomePage extends StatelessWidget {
   const ScanHomePage({super.key});
@@ -93,10 +94,11 @@ class ScanHomePage extends StatelessWidget {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancel'),
           ),
+          // FA-026: actually open Settings — previously a no-op TODO.
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              // Open app settings
+              await PhotoManager.openSetting();
             },
             child: const Text('Open Settings'),
           ),
@@ -210,7 +212,7 @@ class _HeroCard extends StatelessWidget {
             Text(
               'AI scans your entire library in minutes and groups similar photos for easy review.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                     height: 1.5,
                   ),
             ),
@@ -230,7 +232,8 @@ class _HeroCard extends StatelessWidget {
 class _LastScanSummary extends StatelessWidget {
   const _LastScanSummary({required this.session});
 
-  final dynamic session;
+  // FA-023: was `dynamic` — typed to ScanSession for compile-time safety.
+  final ScanSession session;
 
   @override
   Widget build(BuildContext context) {

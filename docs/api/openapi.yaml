@@ -1,0 +1,425 @@
+openapi: 3.1.0
+info:
+  title: Clean Pro API
+  version: 1.0.0
+  description: |
+    Backend API for Clean Pro — handles user profile, subscription entitlement,
+    and aggregate scan statistics. Photo data never leaves the user's device.
+  contact:
+    name: Clean Pro Engineering
+    url: https://github.com/shijithmc/clean-pro
+
+servers:
+  - url: https://api.cleanpro.app/v1
+    description: Production
+  - url: https://api-dev.cleanpro.app/v1
+    description: Development
+
+security:
+  - CognitoJwt: []
+
+components:
+  securitySchemes:
+    CognitoJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: AWS Cognito RS256 JWT. Obtain via Cognito User Pool hosted UI or SDK.
+
+  schemas:
+    ProblemDetails:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          example: https://api.cleanpro.app/errors/not-found
+        title:
+          type: string
+          example: Resource not found
+        status:
+          type: integer
+          example: 404
+        detail:
+          type: string
+          example: User profile not found for the provided userId
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email: ["Email is required", "Email must be a valid address"]
+
+    UserProfile:
+      type: object
+      required: [userId, email, createdAt, trialEndsAt]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+        trialStartedAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        trialEndsAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        totalPhotosScanned:
+          type: integer
+          minimum: 0
+          readOnly: true
+          default: 0
+        totalBytesReclaimed:
+          type: integer
+          format: int64
+          minimum: 0
+          readOnly: true
+          default: 0
+        lastScanAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+
+    CreateUserProfileRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+          example: user@example.com
+
+    Entitlement:
+      type: object
+      required: [userId, status, tier]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ACTIVE, TRIAL, EXPIRED, CANCELLED, GRACE_PERIOD, NONE]
+          description: |
+            ACTIVE = paid subscription active
+            TRIAL = within free trial window
+            EXPIRED = trial ended, no subscription
+            CANCELLED = subscription cancelled, access until period end
+            GRACE_PERIOD = payment failed, brief grace window active
+            NONE = new user, no trial started
+        tier:
+          type: string
+          enum: [FREE_TRIAL, MONTHLY, ANNUAL, NONE]
+        currentPeriodEnd:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the current period ends. Null if status is NONE.
+        daysRemaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Days remaining in current period. Null if status is NONE.
+
+    ScanStatsRequest:
+      type: object
+      required: [photosScanned, duplicateGroupsFound, photosDeleted, bytesReclaimed, scanDurationSeconds, platform, appVersion]
+      properties:
+        photosScanned:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          example: 5240
+        duplicateGroupsFound:
+          type: integer
+          minimum: 0
+          example: 847
+        photosDeleted:
+          type: integer
+          minimum: 0
+          example: 834
+        bytesReclaimed:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 1073741824
+        scanDurationSeconds:
+          type: integer
+          minimum: 0
+          maximum: 3600
+          example: 47
+        platform:
+          type: string
+          enum: [IOS, ANDROID]
+        appVersion:
+          type: string
+          pattern: '^\d+\.\d+\.\d+$'
+          maxLength: 20
+          example: "1.0.0"
+
+    RevenueCatWebhookEvent:
+      type: object
+      required: [event]
+      properties:
+        event:
+          type: object
+          required: [id, type, app_user_id]
+          properties:
+            id:
+              type: string
+              description: Unique event ID (used for idempotency)
+            type:
+              type: string
+              enum: [INITIAL_PURCHASE, RENEWAL, CANCELLATION, EXPIRATION, BILLING_ISSUE, SUBSCRIBER_ALIAS, PRODUCT_CHANGE]
+            app_user_id:
+              type: string
+              description: RevenueCat subscriber ID (maps to Cognito sub)
+            purchased_at_ms:
+              type: integer
+              format: int64
+            expiration_at_ms:
+              type: integer
+              format: int64
+              nullable: true
+            product_id:
+              type: string
+              example: cleanpro_annual
+            store:
+              type: string
+              enum: [APP_STORE, PLAY_STORE]
+            auto_resume_at_ms:
+              type: integer
+              format: int64
+              nullable: true
+
+paths:
+  /users/me:
+    get:
+      operationId: getUserProfile
+      summary: Get current user profile
+      tags: [Users]
+      responses:
+        '200':
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: JWT valid but insufficient scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Profile not found — call POST /users to create first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    post:
+      operationId: createUserProfile
+      summary: Create user profile on first login
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserProfileRequest'
+      responses:
+        '201':
+          description: Profile created and trial started
+          headers:
+            Location:
+              schema:
+                type: string
+              example: /v1/users/me
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Profile already exists for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /users/me/entitlement:
+    get:
+      operationId: getEntitlement
+      summary: Get current subscription entitlement
+      description: |
+        Returns the authoritative entitlement status from the backend.
+        The mobile app also checks RevenueCat SDK directly — this endpoint
+        serves as a secondary validation and recovery path.
+      tags: [Entitlement]
+      responses:
+        '200':
+          description: Entitlement status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entitlement'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: User profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /scans:
+    post:
+      operationId: recordScanStats
+      summary: Record aggregate scan statistics
+      description: |
+        Records aggregate scan metrics only. No photo data, file paths,
+        thumbnails, or identifying information is transmitted.
+      tags: [Scans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanStatsRequest'
+      responses:
+        '201':
+          description: Scan stats recorded
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /webhooks/revenuecat:
+    post:
+      operationId: processRevenueCatWebhook
+      summary: Process RevenueCat subscription lifecycle webhook
+      description: |
+        Receives RevenueCat server-to-server webhook events.
+        Secured by HMAC-SHA256 signature verification (X-RevenueCat-Signature header).
+        Idempotent — duplicate events with the same event ID are ignored.
+      tags: [Webhooks]
+      security: []
+      parameters:
+        - name: X-RevenueCat-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: HMAC-SHA256 of the request body using RevenueCat webhook secret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevenueCatWebhookEvent'
+      responses:
+        '200':
+          description: Event processed or already processed (idempotent)
+        '400':
+          description: Malformed payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Invalid HMAC signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      tags: [Infrastructure]
+      security: []
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  version:
+                    type: string
+                    example: 1.0.0
+                  timestamp:
+                    type: string
+                    format: date-time
